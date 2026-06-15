@@ -3,7 +3,107 @@
 import base64
 import json
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+
+
+def build_claude_code_env(
+    base_url: Optional[str],
+    api_key: Optional[str],
+    model: str,
+) -> Dict[str, str]:
+    """Build the environment variables for running Claude Code CLI.
+
+    Shared by the inference adapter and the functional-test runner so that
+    Claude Code is invoked with an identical environment in both phases.
+
+    Args:
+        base_url: Anthropic-compatible API base URL (e.g. LiteLLM proxy).
+        api_key: Auth token for the API.
+        model: Model identifier; routed to every Claude tier so any internal
+               model selection resolves to the target evaluation model.
+
+    Returns:
+        Mapping of environment variable name to value. Keys whose value is
+        None are omitted.
+    """
+    env_vars = {
+        'ANTHROPIC_BASE_URL': base_url,
+        'ANTHROPIC_AUTH_TOKEN': api_key,
+        'IS_SANDBOX': '1',
+        'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS': '1',
+        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+        'ANTHROPIC_MODEL': model,
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL': model,
+        'ANTHROPIC_DEFAULT_SONNET_MODEL': model,
+        'ANTHROPIC_DEFAULT_OPUS_MODEL': model,
+        'CLAUDE_CODE_EFFORT_LEVEL': 'high',
+    }
+    return {k: v for k, v in env_vars.items() if v is not None}
+
+
+def build_codex_env(
+    base_url: Optional[str],
+    api_key: Optional[str],
+) -> Dict[str, str]:
+    """Build the environment variables for running the Codex CLI (`codex exec`).
+
+    Routes Codex through an OpenAI-compatible endpoint (e.g. a LiteLLM proxy),
+    mirroring how ``build_claude_code_env`` routes Claude Code. ``CODEX_API_KEY``
+    is the credential ``codex exec`` reads in non-interactive runs; ``OPENAI_*``
+    are set as a fallback for sub-flows that still read the standard names.
+
+    Args:
+        base_url: OpenAI-compatible API base URL (e.g. LiteLLM proxy).
+        api_key: Auth token for the API.
+
+    Returns:
+        Mapping of environment variable name to value. Keys whose value is
+        None are omitted.
+    """
+    env_vars = {
+        'OPENAI_BASE_URL': base_url,
+        'CODEX_API_KEY': api_key,
+        'OPENAI_API_KEY': api_key,
+    }
+    return {k: v for k, v in env_vars.items() if v is not None}
+
+
+def build_openhands_env(
+    base_url: Optional[str],
+    api_key: Optional[str],
+    model: str,
+) -> Dict[str, str]:
+    """Build the environment variables for running the OpenHands CLI.
+
+    The headless CLI (`openhands --headless`) reads its LLM configuration from
+    these env vars only when invoked with ``--override-with-envs``. OpenHands
+    routes through LiteLLM, so ``model`` should be a LiteLLM-style identifier
+    (e.g. ``openai/<name>`` or ``anthropic/<name>``).
+
+    Args:
+        base_url: OpenAI-compatible API base URL (e.g. LiteLLM proxy).
+        api_key: Auth token for the API.
+        model: LiteLLM-style model identifier.
+
+    Returns:
+        Mapping of environment variable name to value. Keys whose value is
+        None are omitted.
+    """
+    env_vars = {
+        'LLM_MODEL': model,
+        'LLM_API_KEY': api_key,
+        'LLM_BASE_URL': base_url,
+    }
+    return {k: v for k, v in env_vars.items() if v is not None}
+
+
+def docker_env_flags(env: Dict[str, str]) -> List[str]:
+    """Expand an env mapping into ``docker exec``/``docker run`` -e flags."""
+    flags: List[str] = []
+    for key, value in env.items():
+        if value is not None:
+            flags.extend(["-e", f"{key}={value}"])
+    return flags
 
 
 def ensure_directory(path: Path) -> Path:

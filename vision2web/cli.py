@@ -21,7 +21,8 @@ def cli():
 
 
 @cli.command()
-@click.option('--framework', required=True, type=click.Choice(['claude_code', 'openhands']),
+@click.option('--framework', required=True,
+              type=click.Choice(['claude_code', 'openhands', 'codex']),
               help='Agent framework to use')
 @click.option('--model', required=True, help='Model name to use')
 @click.option('--api-key', required=True, help='API key for the agent framework')
@@ -34,11 +35,13 @@ def cli():
               default='./results', help='Results output directory')
 @click.option('--max-workers', type=int, default=5,
               help='Maximum concurrent workers')
+@click.option('--timeout', type=int, default=7200,
+              help='Max seconds for a single task run before it is killed (default: 7200)')
 @click.option('--task', type=click.Choice(['webpage', 'frontend', 'website']),
               help='Task type to run (default: all)')
 @click.option('--projects', multiple=True, help='Specific projects to run (default: all)')
 def inference(framework, model, api_key, base_url, sandbox_image, datasets_dir,
-              results_dir, max_workers, task, projects):
+              results_dir, max_workers, timeout, task, projects):
     """Run inference phase to generate projects from specifications"""
 
     logger = setup_logger('vision2web', level='INFO')
@@ -53,6 +56,7 @@ def inference(framework, model, api_key, base_url, sandbox_image, datasets_dir,
     config.inference.api_key = api_key
     config.inference.base_url = base_url
     config.inference.max_workers = max_workers
+    config.inference.timeout = timeout
     config.inference.task = task
     config.ensure_dirs()
 
@@ -65,6 +69,7 @@ def inference(framework, model, api_key, base_url, sandbox_image, datasets_dir,
     logger.info(f"Sandbox: {sandbox_image}")
     logger.info(f"Task type: {task or 'all'}")
     logger.info(f"Max workers: {max_workers}")
+    logger.info(f"Timeout: {timeout}s")
     logger.info(f"Datasets: {datasets_dir}")
     logger.info(f"Results: {results_dir}")
     logger.info("=" * 60)
@@ -126,21 +131,27 @@ def inference(framework, model, api_key, base_url, sandbox_image, datasets_dir,
               required=True, help='Datasets directory')
 @click.option('--sandbox', 'sandbox_image', default='vision2web-sandbox:latest',
               help='Docker sandbox image name')
-@click.option('--api-key', required=True, help='API key for evaluation models')
-@click.option('--base-url', default='https://api.openai.com/v1',
-              help='API base URL')
-@click.option('--gui-agent-model', default='gpt-4o-2024-11-20',
-              help='Model name for GUI testing agent')
-@click.option('--vlm-judge-model', default='gpt-4o-2024-11-20',
-              help='Model name for visual prototype comparison')
+@click.option('--functional-model', default='claude-sonnet-4-5-20250929',
+              help='Model for functional testing via Claude Code')
+@click.option('--functional-api-key', required=True,
+              help='API key (auth token) for the functional testing model')
+@click.option('--functional-base-url',
+              help='API base URL for the functional testing model (e.g. LiteLLM proxy)')
+@click.option('--visual-api-key', required=True, help='API key for visual scoring model')
+@click.option('--visual-base-url', default='https://api.openai.com/v1',
+              help='API base URL for visual scoring model')
+@click.option('--visual-model', default='gemini-3-pro-preview',
+              help='Model for visual prototype comparison')
 @click.option('--max-workers', type=int, default=1,
               help='Maximum concurrent evaluations')
 @click.option('--task', type=click.Choice(['webpage', 'frontend', 'website']),
               help='Task type to evaluate (default: all)')
 @click.option('--framework', help='Framework to evaluate (default: all)')
 @click.option('--model', 'eval_model_filter', help='Inference model to evaluate (default: all)')
-def evaluate(results_dir, datasets_dir, sandbox_image, api_key, base_url,
-             gui_agent_model, vlm_judge_model, max_workers, task, framework, eval_model_filter):
+def evaluate(results_dir, datasets_dir, sandbox_image, functional_model,
+             functional_api_key, functional_base_url,
+             visual_api_key, visual_base_url, visual_model, max_workers,
+             task, framework, eval_model_filter):
     """Run evaluation phase to test generated projects"""
 
     logger = setup_logger('vision2web', level='INFO')
@@ -150,10 +161,12 @@ def evaluate(results_dir, datasets_dir, sandbox_image, api_key, base_url,
     config.datasets_dir = datasets_dir
     config.results_dir = results_dir
     config.sandbox.image = sandbox_image
-    config.evaluation.api_key = api_key
-    config.evaluation.base_url = base_url
-    config.evaluation.gui_agent_model = gui_agent_model
-    config.evaluation.vlm_judge_model = vlm_judge_model
+    config.evaluation.api_key = visual_api_key
+    config.evaluation.base_url = visual_base_url
+    config.evaluation.visual_model = visual_model
+    config.evaluation.functional_model = functional_model
+    config.evaluation.functional_api_key = functional_api_key
+    config.evaluation.functional_base_url = functional_base_url
     config.evaluation.max_workers = max_workers
     config.evaluation.task = task
     config.evaluation.framework = framework
@@ -165,8 +178,8 @@ def evaluate(results_dir, datasets_dir, sandbox_image, api_key, base_url,
     logger.info("=" * 60)
     logger.info(f"Results directory: {results_dir}")
     logger.info(f"Datasets: {datasets_dir}")
-    logger.info(f"GUI Agent model: {gui_agent_model}")
-    logger.info(f"VLM Judge model: {vlm_judge_model}")
+    logger.info(f"Functional model: {functional_model}")
+    logger.info(f"Visual model: {visual_model}")
     logger.info(f"Task type: {task or 'all'}")
     logger.info(f"Framework: {framework or 'all'}")
     logger.info(f"Inference model filter: {eval_model_filter or 'all'}")

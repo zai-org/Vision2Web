@@ -50,7 +50,8 @@ class InferenceEngine:
             model=self.config.inference.model,
             base_url=self.config.inference.base_url,
             sandbox_manager=self.sandbox_manager,
-            logger=self.logger
+            logger=self.logger,
+            timeout=self.config.inference.timeout
         )
 
     def _get_project_workspace(self, project: Project) -> Path:
@@ -127,6 +128,17 @@ class InferenceEngine:
         Returns:
             Result dictionary
         """
+        # Skip if already completed
+        workspace = self._get_project_workspace(project)
+        if (workspace / 'start.sh').exists():
+            self.logger.info(f"Skipping {project.name}: already completed")
+            return {
+                'project': project.name,
+                'task_type': project.task_type,
+                'name': project.name,
+                'status': 'skipped',
+            }
+
         self.logger.info(f"Starting inference for project: {project.name} (task: {project.task_type})")
         start_time = datetime.now()
 
@@ -189,12 +201,32 @@ class InferenceEngine:
                     result.update({
                         'status': task_result['status'],
                         'logs': task_result.get('logs', []),
+                        'conversation': task_result.get('conversation', []),
                         'error': task_result.get('error'),
                         'framework': task_result.get('framework'),
                         'model': task_result.get('model'),
                         'project_info': task_result.get('project_info')
                     })
                     # Save logs
+                    if task_result.get('logs'):
+                        self._save_logs(workspace, task_result['logs'])
+                    break
+                elif task_result['status'] == 'timeout':
+                    # Timed out - terminal, do not retry (a hung run is unlikely
+                    # to succeed on retry and would burn another full timeout).
+                    self.logger.error(
+                        f"Task timed out on attempt {attempt} for {project.name}; "
+                        f"not retrying."
+                    )
+                    result.update({
+                        'status': task_result['status'],
+                        'logs': task_result.get('logs', []),
+                        'conversation': task_result.get('conversation', []),
+                        'error': task_result.get('error'),
+                        'framework': task_result.get('framework'),
+                        'model': task_result.get('model'),
+                        'project_info': task_result.get('project_info')
+                    })
                     if task_result.get('logs'):
                         self._save_logs(workspace, task_result['logs'])
                     break
@@ -213,6 +245,7 @@ class InferenceEngine:
                         result.update({
                             'status': task_result['status'],
                             'logs': task_result.get('logs', []),
+                            'conversation': task_result.get('conversation', []),
                             'error': task_result.get('error'),
                             'framework': task_result.get('framework'),
                             'model': task_result.get('model'),

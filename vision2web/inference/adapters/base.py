@@ -15,7 +15,8 @@ class BaseAdapter(ABC):
         model: str,
         base_url: Optional[str] = None,
         sandbox_manager = None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        timeout: Optional[int] = None
     ):
         """
         Initialize the adapter.
@@ -26,12 +27,14 @@ class BaseAdapter(ABC):
             base_url: Optional API base URL
             sandbox_manager: SandboxManager instance for containerized execution
             logger: Optional logger instance
+            timeout: Optional max seconds for a single task run (None = no limit)
         """
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
         self.sandbox_manager = sandbox_manager
         self.logger = logger or logging.getLogger(__name__)
+        self.timeout = timeout
 
     @abstractmethod
     async def run_task(

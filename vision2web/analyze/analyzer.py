@@ -85,9 +85,21 @@ class ResultAnalyzer:
         datasets_path: Path
     ) -> Dict[str, Any]:
         """Process a single project and extract test results"""
-        # Check if project was successfully deployed
+        # A project counts as successfully evaluated only if its
+        # evaluation_result.json exists AND records status == "success".
+        # Deploy timeouts / errors now also write this file (with an error
+        # status) so they are skipped on re-runs; those must score 0, not
+        # be treated as successful, so we check the status rather than mere
+        # file existence.
         evaluation_result_file = project_path / "evaluation_result.json"
-        success = evaluation_result_file.exists()
+        success = False
+        if evaluation_result_file.exists():
+            try:
+                with open(evaluation_result_file, 'r', encoding='utf-8') as f:
+                    eval_data = json.load(f)
+                success = eval_data.get("status") == "success"
+            except (json.JSONDecodeError, IOError):
+                success = False
 
         # Get prototype scores
         prototypes = self._get_prototype_scores(

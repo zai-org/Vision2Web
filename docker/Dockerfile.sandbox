@@ -1,128 +1,61 @@
 FROM ubuntu:22.04
 
-# Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Update system and install base tools
-RUN apt-get update && apt-get install -y \
-    # Base tools
-    curl \
-    wget \
-    git \
-    vim \
-    unzip \
-    sudo \
-    ca-certificates \
-    gnupg \
-    lsb-release \
-    software-properties-common \
-    # Build tools
-    build-essential \
-    gcc \
-    g++ \
-    make \
-    cmake \
-    # Network tools
-    net-tools \
-    iputils-ping \
-    # Other common tools
-    tzdata \
-    locales \
-    && rm -rf /var/lib/apt/lists/*
+# ── System packages, databases, and Python 3.12 ──────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl wget git vim nano unzip jq ca-certificates gnupg lsb-release \
+        software-properties-common \
+        build-essential pkg-config libssl-dev libffi-dev \
+        postgresql postgresql-client libpq-dev \
+        redis-server sqlite3 libsqlite3-dev nginx \
+        tmux \
+        sudo locales tzdata \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv python3.12-dev \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 \
+    && locale-gen en_US.UTF-8 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Set locale
-RUN locale-gen en_US.UTF-8
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
-# Install Node.js 20.x (LTS)
+# ── Node.js 20 LTS ───────────────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install database client tools
-RUN apt-get update && apt-get install -y \
-    # PostgreSQL client
-    postgresql-client \
-    # MySQL client
-    default-mysql-client \
-    # Redis client
-    redis-tools \
-    # SQLite
-    sqlite3 \
-    && rm -rf /var/lib/apt/lists/*
+# ── Node tooling and agent CLIs ──────────────────────────────────────
+RUN npm install -g \
+        pnpm yarn typescript ts-node \
+        @playwright/cli@latest \
+        @anthropic-ai/claude-code \
+        @openai/codex
 
-# Install Python 3.12
-RUN add-apt-repository ppa:deadsnakes/ppa -y \
-    && apt-get update \
-    && apt-get install -y \
-    python3.12 \
-    python3.12-dev \
-    python3.12-venv \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+# ── Python packages and agent CLIs ───────────────────────────────────
+RUN pip install --no-cache-dir --ignore-installed \
+        flask fastapi uvicorn[standard] django \
+        requests httpx aiohttp \
+        sqlalchemy psycopg2-binary redis pymongo \
+        celery \
+        pytest black ruff \
+        playwright \
+        openhands
 
-# Set Python 3.12 as default version
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+# ── Google Chrome (required by `playwright-cli open`) ─────────────────
+RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt-get update && apt-get install -y /tmp/chrome.deb \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/chrome.deb
 
-# Install pip for Python 3.12
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+# ── Playwright browsers and skills ───────────────────────────────────
+RUN playwright-cli install-browser --with-deps chromium \
+    && playwright install chromium \
+    && playwright-cli install --skills claude \
+    && playwright-cli install --skills agents
 
-# Install Playwright system dependencies
-RUN apt-get update && apt-get install -y \
-    # Playwright Chrome dependencies
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libatspi2.0-0 \
-    libxshmfence1 \
-    # Font support
-    fonts-liberation \
-    fonts-noto-color-emoji \
-    fonts-unifont \
-    # Other dependencies
-    libglib2.0-0 \
-    libu2f-udev \
-    libvulkan1 \
-    xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create workspace directory
-RUN mkdir -p /workspace
-
-# Use root user (default is root, no USER directive needed)
 WORKDIR /workspace
 
-# Install Playwright
-RUN python3 -m pip install playwright \
-    && python3 -m playwright install chromium
-
-# Upgrade pip, setuptools, wheel
-RUN python3 -m pip install --upgrade pip setuptools wheel
-
-# Install claude_agent_sdk and openhands (global install)
-RUN python3 -m pip install claude_agent_sdk==0.1.18
-
-RUN python3 -m pip install openhands-sdk \
-    && python3 -m pip install openhands-tools \
-    && python3 -m pip install openhands-workspace \
-    && python3 -m pip install openhands-agent-server 
-
-# Default command
 CMD ["/bin/bash"]

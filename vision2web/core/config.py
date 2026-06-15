@@ -21,7 +21,7 @@ class InferenceConfig:
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     max_workers: int = 5
-    timeout: int = 3600  # seconds
+    timeout: int = 7200  # max seconds for a single task run (enforced in adapter)
     task: Optional[str] = None  # webpage, frontend, or website
     max_retries: int = 2  # maximum number of retries on failure (total attempts = 1 + max_retries)
 
@@ -29,19 +29,21 @@ class InferenceConfig:
 @dataclass
 class EvaluationConfig:
     """Evaluation configuration"""
-    gui_agent_model: str = "glm-4.6v"  # Model for GUI testing agent
-    vlm_judge_model: str = "gemini-3-pro-preview"  # Model for visual prototype comparison
-    api_key: Optional[str] = None
-    base_url: str = None
+    # Visual scoring (VLM judge) endpoint
+    visual_model: str = "gemini-3-pro-preview"
+    api_key: Optional[str] = None      # visual scoring API key
+    base_url: str = None               # visual scoring API base URL
+    # Functional testing (Claude Code) endpoint — mirrors the inference setup
+    functional_model: str = "claude-sonnet-4-5-20250929"
+    functional_api_key: Optional[str] = None
+    functional_base_url: Optional[str] = None
     max_workers: int = 1
-    base_port: int = 3000
     headless: bool = True
     window_width: int = 1024
     window_height: int = 768
-    generate_videos: bool = False
-    task: Optional[str] = None  # webpage, frontend, or website
+    task: Optional[str] = None
     framework: Optional[str] = None
-    model: Optional[str] = None  # Model filter for evaluation (inference model to evaluate)
+    model: Optional[str] = None
 
 
 @dataclass

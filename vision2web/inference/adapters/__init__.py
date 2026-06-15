@@ -3,6 +3,7 @@
 from vision2web.inference.adapters.base import BaseAdapter
 from vision2web.inference.adapters.claude_code import ClaudeCodeAdapter
 from vision2web.inference.adapters.openhands import OpenHandsAdapter
+from vision2web.inference.adapters.codex import CodexAdapter
 
 
 def get_adapter(
@@ -11,18 +12,20 @@ def get_adapter(
     model: str,
     base_url: str = None,
     sandbox_manager = None,
-    logger = None
+    logger = None,
+    timeout: int = None
 ) -> BaseAdapter:
     """
     Get an adapter instance for the specified framework.
 
     Args:
-        framework: Framework name ('claude_code' or 'openhands')
+        framework: Framework name ('claude_code', 'openhands', or 'codex')
         api_key: API key for authentication
         model: Model identifier
         base_url: Optional API base URL
         sandbox_manager: SandboxManager instance
         logger: Optional logger instance
+        timeout: Optional max seconds for a single task run (None = no limit)
 
     Returns:
         Adapter instance
@@ -33,6 +36,7 @@ def get_adapter(
     adapters = {
         'claude_code': ClaudeCodeAdapter,
         'openhands': OpenHandsAdapter,
+        'codex': CodexAdapter,
     }
 
     if framework not in adapters:
@@ -47,7 +51,8 @@ def get_adapter(
         model=model,
         base_url=base_url,
         sandbox_manager=sandbox_manager,
-        logger=logger
+        logger=logger,
+        timeout=timeout
     )
 
 
@@ -55,5 +60,6 @@ __all__ = [
     'BaseAdapter',
     'ClaudeCodeAdapter',
     'OpenHandsAdapter',
+    'CodexAdapter',
     'get_adapter',
 ]

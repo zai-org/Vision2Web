@@ -19,6 +19,7 @@ Vision2Web is a comprehensive benchmark designed to evaluate multimodal coding a
 
 ## 🔥 News
 
+* **`2026.06.15`** 🔧 Functional testing now runs on Claude Code + `playwright-cli`, and inference adds a Codex framework alongside the Claude Code CLI.
 * **`2026.04.30`** 🎉 Vision2Web is accepted by ICML 2026 as a Spotlight Paper!
 * **`2026.03.30`** 🌟 We released Vision2Web with comprehensive evaluation tools and leaderboard!
 
@@ -118,9 +119,13 @@ bash build.sh
 
 This builds the `vision2web-sandbox:latest` image with all necessary dependencies.
 
-### Step 2: Configure LiteLLM Proxy (Recommended)
+The sandbox ships **Claude Code**, **Codex**, **OpenHands**, and **`playwright-cli`** (with its agent skills).
 
-For consistent model routing and API compatibility, we recommend using [LiteLLM](https://github.com/BerriAI/litellm) as a proxy:
+### Step 2: Configure Model Endpoints
+
+**Recommended: use each agent's native API** — Claude Code with the Anthropic API, Codex with the OpenAI API — to avoid deviations introduced by cross-format conversion.
+
+Alternatively, you can route through [LiteLLM](https://github.com/BerriAI/litellm) as a proxy for unified model routing across providers:
 
 ```bash
 # Install LiteLLM
@@ -129,9 +134,6 @@ pip install litellm[proxy]
 # Start LiteLLM proxy with your configuration
 litellm --config litellm_config.yaml
 ```
-
-**For Claude Code**: When using the Claude Code framework, we route all claude-* model identifiers to the target evaluation model via the LiteLLM proxy.
-
 
 ### Step 3: Run Inference
 
@@ -142,12 +144,13 @@ bash scripts/run_inference.sh
 ```
 
 **Key Parameters**:
-- `--framework`: Agent framework (`claude_code` or `openhands`)
+- `--framework`: Agent framework (`claude_code`, `codex`, or `openhands`)
 - `--model`: Model identifier (should match LiteLLM configuration)
 - `--base-url`: API base URL (use LiteLLM proxy endpoint)
 - `--task`: Task type filter (`webpage`, `frontend`, or `website`)
 - `--projects`: Specific project names to run (optional)
 - `--max-workers`: Number of concurrent inference tasks
+- `--timeout`: Max seconds for a single task run before it is killed (default: 7200)
 
 **Results Structure**:
 ```
@@ -169,11 +172,19 @@ After inference completes, run automated evaluation:
 bash scripts/run_evaluation.sh
 ```
 
-Or use the CLI with separate models for different evaluation tasks:
+Evaluation has two phases:
+- **Functional testing**: A Claude Code session drives the deployed app through each workflow with `playwright-cli`, checking validation criteria and recording Pass/Fail/Blocked per test case.
+- **Visual scoring**: A VLM judge compares prototype images against actual page screenshots captured during the run.
+
+Or use the CLI with separate model endpoints for the two phases:
 
 **Key Parameters**:
-- `--gui-agent-model`: Model for GUI testing agent (executes test workflows)
-- `--vlm-judge-model`: Model for visual prototype comparison
+- `--functional-model`: Model for functional testing via Claude Code
+- `--functional-api-key`: API key (auth token) for the functional testing model
+- `--functional-base-url`: API base URL for the functional testing model
+- `--visual-model`: Model for visual prototype comparison
+- `--visual-api-key`: API key for the visual scoring model
+- `--visual-base-url`: API base URL for the visual scoring model
 - `--model`: Filter for inference model results to evaluate
 - `--framework`: Filter for framework results to evaluate
 - `--task`: Filter for task type to evaluate

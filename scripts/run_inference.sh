@@ -6,6 +6,7 @@
 set -e
 
 # Configuration from environment variables with defaults
+# FRAMEWORK options: claude_code | openhands | codex
 FRAMEWORK="${FRAMEWORK:-}"
 MODEL="${MODEL:-}"
 API_KEY="${API_KEY:-}"

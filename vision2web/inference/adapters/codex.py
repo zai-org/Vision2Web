@@ -1,22 +1,19 @@
-"""Claude Code CLI adapter implementation for Vision2Web"""
+"""Codex CLI adapter implementation for Vision2Web"""
 
 import asyncio
-import json
-import shlex
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
 from vision2web.inference.adapters.base import BaseAdapter
-from vision2web.core.utils import build_claude_code_env, docker_env_flags
 
 
-class ClaudeCodeAdapter(BaseAdapter):
-    """Adapter that invokes Claude Code CLI via docker exec."""
+class CodexAdapter(BaseAdapter):
+    """Adapter that invokes the Codex CLI (`codex exec`) via docker exec."""
 
     @property
     def framework_name(self) -> str:
-        return "claude_code"
+        return "codex"
 
     async def run_task(
         self,
@@ -31,6 +28,7 @@ class ClaudeCodeAdapter(BaseAdapter):
         logs = []
         status = 'failed'
         error_message = None
+        conversation = []
 
         try:
             container_id = self.sandbox_manager.get_container_id(workspace)
@@ -40,28 +38,29 @@ class ClaudeCodeAdapter(BaseAdapter):
                     raise Exception("Failed to create sandbox container")
                 await self.sandbox_manager.start_container(workspace)
 
-            env_flags = docker_env_flags(
-                build_claude_code_env(
-                    base_url=self.base_url,
-                    api_key=self.api_key,
-                    model=self.model,
-                )
-            )
+            # Codex 0.138 ignores OPENAI_BASE_URL; a custom (proxy/gateway)
+            # endpoint must be registered as a model provider in
+            # ~/.codex/config.toml. wire_api must be "responses" ("chat" was
+            # removed). The bearer token is carried via experimental_bearer_token
+            # so no env credential is needed.
+            await self._write_codex_config(container_id)
 
+            # `codex exec` runs non-interactively (approval policy Never).
+            # --skip-git-repo-check: /workspace is not a git repo.
+            # --dangerously-bypass-approvals-and-sandbox: the outer Docker
+            #   container already provides isolation.
             cmd = [
                 "docker", "exec",
                 "-w", "/workspace",
-                *env_flags,
                 container_id,
-                "claude",
-                "--print",
-                "--verbose",
-                "--output-format", "stream-json",
-                "--dangerously-skip-permissions",
-                "-p", prompt,
+                "codex", "exec",
+                "--skip-git-repo-check",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--model", self.model,
+                prompt,
             ]
 
-            self.logger.info(f"Running Claude Code CLI for {project_info['name']}...")
+            self.logger.info(f"Running Codex CLI for {project_info['name']}...")
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -77,12 +76,12 @@ class ClaudeCodeAdapter(BaseAdapter):
                 else:
                     stdout, stderr = await proc.communicate()
             except asyncio.TimeoutError:
-                # Claude Code hung past the per-task limit. Kill the host-side
-                # `docker exec` client, then kill the in-container claude process
-                # so it does not linger as an orphan (which would keep the
-                # container alive indefinitely with no API activity).
+                # Codex hung past the per-task limit. Kill the host-side
+                # `docker exec` client, then reap the in-container codex
+                # process so it does not linger as an orphan keeping the
+                # container busy with no API activity.
                 self.logger.error(
-                    f"Claude Code timed out after {self.timeout}s for "
+                    f"Codex CLI timed out after {self.timeout}s for "
                     f"{project_info['name']}; killing process."
                 )
                 try:
@@ -90,14 +89,14 @@ class ClaudeCodeAdapter(BaseAdapter):
                 except ProcessLookupError:
                     pass
                 await proc.wait()
-                await self._kill_container_claude(container_id)
+                await self._kill_container_process(container_id, "codex")
 
                 end_time = datetime.now()
                 return {
                     'status': 'timeout',
                     'logs': logs + [f"Task timed out after {self.timeout}s"],
                     'conversation': [],
-                    'error': f"Claude Code timed out after {self.timeout}s",
+                    'error': f"Codex CLI timed out after {self.timeout}s",
                     'start_time': start_time.isoformat(),
                     'end_time': end_time.isoformat(),
                     'duration': (end_time - start_time).total_seconds(),
@@ -110,16 +109,7 @@ class ClaudeCodeAdapter(BaseAdapter):
             stdout_text = stdout.decode('utf-8', errors='replace')
             stderr_text = stderr.decode('utf-8', errors='replace')
 
-            # Parse stream-json to extract conversation messages
-            conversation = []
-            for line in stdout_text.splitlines():
-                line = line.strip()
-                if line:
-                    try:
-                        conversation.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        conversation.append({"type": "raw", "content": line})
-
+            logs.extend(stdout_text.splitlines() if stdout_text else [])
             logs.extend(stderr_text.splitlines() if stderr_text else [])
 
             if proc.returncode == 0:
@@ -136,11 +126,11 @@ class ClaudeCodeAdapter(BaseAdapter):
                     error_message = "Agent completed but start.sh was not generated"
                     self.logger.error(error_message)
             else:
-                error_message = f"Claude Code exited with code {proc.returncode}"
+                error_message = f"Codex CLI exited with code {proc.returncode}"
                 self.logger.error(error_message)
 
         except Exception as e:
-            error_message = f"Error running Claude Code: {e}"
+            error_message = f"Error running Codex CLI: {e}"
             self.logger.error(error_message, exc_info=True)
             logs.append(error_message)
 
@@ -153,7 +143,7 @@ class ClaudeCodeAdapter(BaseAdapter):
         return {
             'status': status,
             'logs': logs,
-            'conversation': conversation if 'conversation' in dir() else [],
+            'conversation': conversation,
             'error': error_message,
             'start_time': start_time.isoformat(),
             'end_time': end_time.isoformat(),
@@ -164,24 +154,69 @@ class ClaudeCodeAdapter(BaseAdapter):
             'sandbox': True
         }
 
-    async def _kill_container_claude(self, container_id: str) -> None:
-        """Kill any lingering claude process inside the container.
+    async def _write_codex_config(self, container_id: str) -> None:
+        """Write ~/.codex/config.toml inside the container.
 
-        Killing the host-side `docker exec` client does not necessarily stop the
-        process it spawned inside the container, which would otherwise keep
-        running (and keep the container busy) with no API activity. The engine
-        stops/removes the container afterwards, but we proactively reap the
-        in-container claude process so results can still be copied out cleanly.
+        Registers the configured base_url as a custom model provider so Codex
+        routes through the gateway/proxy instead of api.openai.com. The bearer
+        token is embedded directly (experimental_bearer_token) and
+        requires_openai_auth is disabled so Codex does not attempt its own
+        OpenAI auth flow.
+        """
+        # TOML basic strings: escape backslashes and double quotes.
+        def toml_str(value: str) -> str:
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+
+        lines = [
+            f"model = {toml_str(self.model)}",
+            'model_reasoning_effort = "high"',
+            'model_provider = "vision2web-gateway"',
+            "",
+            "[model_providers.vision2web-gateway]",
+            'name = "vision2web-gateway"',
+            f"base_url = {toml_str(self.base_url)}",
+            'wire_api = "responses"',
+            "requires_openai_auth = false",
+        ]
+        if self.api_key:
+            lines.append(f"experimental_bearer_token = {toml_str(self.api_key)}")
+        config_toml = "\n".join(lines) + "\n"
+
+        # Write atomically from stdin to avoid quoting issues in the shell.
+        write_cmd = (
+            "mkdir -p ~/.codex && cat > ~/.codex/config.toml"
+        )
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "exec", "-i", container_id,
+            "sh", "-c", write_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate(input=config_toml.encode("utf-8"))
+        if proc.returncode != 0:
+            raise Exception(
+                f"Failed to write codex config.toml: "
+                f"{stderr.decode('utf-8', errors='replace')}"
+            )
+
+    async def _kill_container_process(self, container_id: str, name: str) -> None:
+        """Kill any lingering CLI process inside the container.
+
+        Killing the host-side `docker exec` client does not necessarily stop
+        the process it spawned inside the container, which would otherwise keep
+        running (and keep the container busy) with no API activity.
         """
         if not container_id:
             return
         try:
             proc = await asyncio.create_subprocess_exec(
                 "docker", "exec", container_id,
-                "pkill", "-9", "-f", "claude",
+                "pkill", "-9", "-f", name,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             await proc.communicate()
         except Exception as e:
-            self.logger.warning(f"Failed to kill in-container claude process: {e}")
+            self.logger.warning(f"Failed to kill in-container {name} process: {e}")

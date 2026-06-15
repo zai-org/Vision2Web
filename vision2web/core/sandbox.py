@@ -340,9 +340,16 @@ class SandboxManager:
 
             self.logger.debug(f"Copying {container_path} from container {container_id[:12]} to {host_path}...")
 
+            # Stream the contents of container_path (not the directory itself) into
+            # host_path via tar. `docker cp <id>:<path>/.` is unreliable across Docker
+            # versions (some ignore the trailing `/.` and nest the copy under
+            # host_path/<basename>), so we use tar to land the contents flat.
+            copy_cmd = (
+                f"docker exec {container_id} tar -C {container_path} -cf - . "
+                f"| tar -C {str(host_path)} -xf -"
+            )
             result = await asyncio.create_subprocess_exec(
-                "docker", "cp",
-                f"{container_id}:{container_path}/.", str(host_path),
+                "bash", "-c", copy_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
