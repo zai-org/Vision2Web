@@ -305,16 +305,14 @@ class EvaluationEngine:
                     dataset_path=str(dataset_project.path),
                 )
 
-                # Visual scoring — temporarily disabled (VLM judge too slow).
-                # Screenshots are still captured and copied to the host, so
-                # scoring can be re-run later from the existing *_actual.png.
-                # await self.visual_scorer.score_all_prototypes(
-                #     workflow_item=workflow_item,
-                #     workflow_idx=idx,
-                #     dataset_path=str(dataset_project.path),
-                #     output_dir=workspace,
-                #     actual_pages=func_result.get('screenshots', {}),
-                # )
+                # Visual scoring via VLM Judge
+                await self.visual_scorer.score_all_prototypes(
+                    workflow_item=workflow_item,
+                    workflow_idx=idx,
+                    dataset_path=str(dataset_project.path),
+                    output_dir=workspace,
+                    actual_pages=func_result.get('screenshots', {}),
+                )
 
                 self.logger.info(f"Workflow {idx} completed")
                 successful_workflows.append(idx)
