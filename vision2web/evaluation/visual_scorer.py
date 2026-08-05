@@ -3,13 +3,13 @@
 import os
 import re
 import json
-import time
+import asyncio
 import base64
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from vision2web.evaluation.prompts import VISUAL_PROMPT
 
@@ -27,8 +27,15 @@ class VisualScorer:
         base_url: str,
         visual_model: str,
         log_dir: Optional[str] = None,
+        timeout: float = 600.0,
     ):
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        # Retries are handled in _call_vlm.
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=0,
+        )
         self.visual_model = visual_model
         self.logger = logging.getLogger('VisualScorer')
 
@@ -65,11 +72,11 @@ class VisualScorer:
 
         return content
 
-    def _call_vlm(
+    async def _call_vlm(
         self,
         prompt: str,
         images: Dict[str, str],
-        max_tokens: int = 4096,
+        max_tokens: int = 64000,
     ) -> Tuple[str, bool]:
         retry_times = 0
         max_retries = 5
@@ -79,7 +86,7 @@ class VisualScorer:
         while retry_times < max_retries:
             try:
                 self.logger.info(f'Calling visual model {self.visual_model}...')
-                response = self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(
                     model=self.visual_model,
                     messages=messages,
                     max_tokens=max_tokens,
@@ -88,11 +95,11 @@ class VisualScorer:
             except Exception as e:
                 self.logger.error(f'VLM API call error: {type(e).__name__} - {str(e)}')
                 retry_times += 1
-                time.sleep(5)
+                await asyncio.sleep(5)
 
         return None, True
 
-    def compare_prototype(
+    async def compare_prototype(
         self,
         prototype_screenshot_b64: str,
         actual_screenshot_b64: str,
@@ -112,7 +119,7 @@ class VisualScorer:
         for attempt in range(1, max_retries + 1):
             self.logger.info(f'Prototype comparison attempt {attempt}/{max_retries}')
 
-            response, error = self._call_vlm(prompt=prompt, images=images)
+            response, error = await self._call_vlm(prompt=prompt, images=images)
 
             if error or not response:
                 self.logger.error(f'Prototype comparison API call failed on attempt {attempt}')
@@ -175,39 +182,52 @@ class VisualScorer:
 
         test_results_base = Path(output_dir) / 'test_results'
         prototypes_dir = test_results_base / 'prototypes'
-        prototypes_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(prototypes_dir.mkdir, parents=True, exist_ok=True)
 
+        # Image encoding and JSON writes run in worker threads to keep the
+        # shared event loop free.
         for proto_name, proto_config in prototype_info.items():
             try:
                 self.logger.info(f'Processing prototype: {proto_name}')
 
                 prototype_path = os.path.join(dataset_path, 'prototypes', f'{proto_name}.jpg')
-                if not os.path.exists(prototype_path):
-                    self.logger.error(f"Prototype not found: {prototype_path}")
-                    continue
-
-                prototype_b64 = base64.b64encode(
-                    open(prototype_path, 'rb').read()
-                ).decode('utf-8')
 
                 actual_data = actual_pages.get(proto_name)
                 if not actual_data:
                     self.logger.warning(f"No screenshot for prototype {proto_name}")
                     continue
 
-                actual_b64 = base64.b64encode(actual_data).decode('utf-8')
+                try:
+                    prototype_b64 = await asyncio.to_thread(
+                        self._encode_image, prototype_path
+                    )
+                except FileNotFoundError:
+                    self.logger.error(f"Prototype not found: {prototype_path}")
+                    continue
 
-                scores = self.compare_prototype(
+                actual_b64 = await asyncio.to_thread(
+                    lambda: base64.b64encode(actual_data).decode('utf-8')
+                )
+
+                scores = await self.compare_prototype(
                     prototype_screenshot_b64=prototype_b64,
                     actual_screenshot_b64=actual_b64,
                 )
                 results[proto_name] = scores
 
                 scores_file = prototypes_dir / f'{proto_name}_scores.json'
-                with open(scores_file, 'w', encoding='utf-8') as f:
-                    json.dump(scores, f, indent=2, ensure_ascii=False)
+                await asyncio.to_thread(self._write_scores, scores_file, scores)
 
             except Exception as e:
                 self.logger.error(f"Failed to process prototype {proto_name}: {e}", exc_info=True)
 
         return results
+
+    @staticmethod
+    def _encode_image(path: str) -> str:
+        return base64.b64encode(Path(path).read_bytes()).decode('utf-8')
+
+    @staticmethod
+    def _write_scores(scores_file: Path, scores: List[Dict]) -> None:
+        with open(scores_file, 'w', encoding='utf-8') as f:
+            json.dump(scores, f, indent=2, ensure_ascii=False)
