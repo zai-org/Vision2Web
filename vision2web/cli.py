@@ -22,7 +22,7 @@ def cli():
 
 @cli.command()
 @click.option('--framework', required=True,
-              type=click.Choice(['claude_code', 'openhands', 'codex']),
+              type=click.Choice(['claude_code', 'openhands', 'codex', 'gemini_cli']),
               help='Agent framework to use')
 @click.option('--model', required=True, help='Model name to use')
 @click.option('--api-key', required=True, help='API key for the agent framework')
@@ -35,8 +35,8 @@ def cli():
               default='./results', help='Results output directory')
 @click.option('--max-workers', type=int, default=5,
               help='Maximum concurrent workers')
-@click.option('--timeout', type=int, default=7200,
-              help='Max seconds for a single task run before it is killed (default: 7200)')
+@click.option('--timeout', type=int, default=36000,
+              help='Max seconds for a single task run before it is killed (default: 36000)')
 @click.option('--task', type=click.Choice(['webpage', 'frontend', 'website']),
               help='Task type to run (default: all)')
 @click.option('--projects', multiple=True, help='Specific projects to run (default: all)')

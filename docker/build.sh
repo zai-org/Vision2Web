@@ -12,7 +12,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Build the image
 docker build \
     -t vision2web-sandbox:latest \
-    -f "${SCRIPT_DIR}/Dockerfile.sandbox" "${SCRIPT_DIR}"
+    -f "${SCRIPT_DIR}/Dockerfile" "${SCRIPT_DIR}"
 
 echo "✓ Docker image built successfully: vision2web-sandbox:latest"
 echo ""

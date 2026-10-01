@@ -424,19 +424,27 @@ class FunctionalTester:
 
         screenshot_dir = "/workspace/test_results/prototypes"
 
-        cmds = [
-            f"playwright-cli open {url}",
-            f"playwright-cli resize {width} {height}",
+        # Each capture is independent: a prototype that fails to render must not
+        # skip the ones after it, and the browser has to be closed either way so
+        # the next workflow starts from a clean session. `rc` carries the first
+        # failure out to the caller for logging.
+        lines = [
+            "rc=0",
             f"mkdir -p {screenshot_dir}",
+            f"playwright-cli open {url} || exit 1",
+            f"playwright-cli resize {width} {height} || exit 1",
         ]
         for proto_name, proto_config in prototype_info.items():
             fullpage = proto_config.get('fullpage', True)
             path = f"{screenshot_dir}/{proto_name}_actual.png"
             flag = "--full-page " if fullpage else ""
-            cmds.append(f"playwright-cli screenshot {flag}--filename={path}")
-        cmds.append("playwright-cli close")
+            lines.append(
+                f"playwright-cli screenshot {flag}--filename={path} || rc=1"
+            )
+        lines.append("playwright-cli close || true")
+        lines.append("exit $rc")
 
-        script = " && ".join(cmds)
+        script = "\n".join(lines)
 
         proc = await asyncio.create_subprocess_exec(
             "docker", "exec", "-w", "/workspace", container_id,

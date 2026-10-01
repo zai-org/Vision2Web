@@ -12,6 +12,8 @@ from vision2web.core.constants import (
     CONTAINER_WORKSPACE,
     CONTAINER_TMP_WORKSPACE,
     CONTAINER_USER,
+    CONTAINER_ENV,
+    CONTAINER_MEMORY_LIMIT,
     DOCKER_CREATE_TIMEOUT,
     DOCKER_START_TIMEOUT,
     DOCKER_STOP_TIMEOUT,
@@ -28,6 +30,7 @@ class SandboxManager:
         image_name: str,
         workspace_dir: str = CONTAINER_WORKSPACE,
         user: str = CONTAINER_USER,
+        memory_limit: Optional[str] = CONTAINER_MEMORY_LIMIT,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -37,11 +40,15 @@ class SandboxManager:
             image_name: Docker image name to use
             workspace_dir: Working directory inside container
             user: User to run commands as
+            memory_limit: `docker --memory` value for task containers, or None
+                   to impose no limit. Also sizes the Gemini CLI's V8 heap at
+                   half this value - see CONTAINER_MEMORY_LIMIT.
             logger: Optional logger instance
         """
         self.image_name = image_name
         self.workspace_dir = workspace_dir
         self.user = user
+        self.memory_limit = memory_limit
         self.logger = logger or logging.getLogger(__name__)
         self._containers: Dict[str, str] = {}  # workspace_path -> container_id
 
@@ -166,8 +173,25 @@ class SandboxManager:
             "--rm",  # Auto-remove when stopped
         ]
 
+        # Without this the container inherits the daemon's default ceiling, and
+        # the Gemini CLI derives its own V8 heap from what it sees - see
+        # CONTAINER_MEMORY_LIMIT. `--memory-swap` is pinned to the same value so
+        # docker does not grant 2x in swap, which would only trade the OOM for
+        # thrashing.
+        if self.memory_limit:
+            cmd.extend([
+                "--memory", self.memory_limit,
+                "--memory-swap", self.memory_limit,
+            ])
+
         # Add proxy environment variables
         for key, value in self.proxy_env.items():
+            cmd.extend(["-e", f"{key}={value}"])
+
+        # Baseline container environment (see CONTAINER_ENV). Set here rather
+        # than on each `docker exec` so that processes the agent spawns inside
+        # the container inherit it as well.
+        for key, value in CONTAINER_ENV.items():
             cmd.extend(["-e", f"{key}={value}"])
 
         # Add image and command

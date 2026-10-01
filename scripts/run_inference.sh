@@ -6,7 +6,7 @@
 set -e
 
 # Configuration from environment variables with defaults
-# FRAMEWORK options: claude_code | openhands | codex
+# FRAMEWORK options: claude_code | openhands | codex | gemini_cli
 FRAMEWORK="${FRAMEWORK:-}"
 MODEL="${MODEL:-}"
 API_KEY="${API_KEY:-}"

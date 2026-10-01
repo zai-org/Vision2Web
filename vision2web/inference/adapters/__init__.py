@@ -4,6 +4,7 @@ from vision2web.inference.adapters.base import BaseAdapter
 from vision2web.inference.adapters.claude_code import ClaudeCodeAdapter
 from vision2web.inference.adapters.openhands import OpenHandsAdapter
 from vision2web.inference.adapters.codex import CodexAdapter
+from vision2web.inference.adapters.gemini_cli import GeminiCliAdapter
 
 
 def get_adapter(
@@ -19,7 +20,8 @@ def get_adapter(
     Get an adapter instance for the specified framework.
 
     Args:
-        framework: Framework name ('claude_code', 'openhands', or 'codex')
+        framework: Framework name ('claude_code', 'openhands', 'codex',
+                   or 'gemini_cli')
         api_key: API key for authentication
         model: Model identifier
         base_url: Optional API base URL
@@ -37,6 +39,7 @@ def get_adapter(
         'claude_code': ClaudeCodeAdapter,
         'openhands': OpenHandsAdapter,
         'codex': CodexAdapter,
+        'gemini_cli': GeminiCliAdapter,
     }
 
     if framework not in adapters:
@@ -61,5 +64,6 @@ __all__ = [
     'ClaudeCodeAdapter',
     'OpenHandsAdapter',
     'CodexAdapter',
+    'GeminiCliAdapter',
     'get_adapter',
 ]

@@ -5,7 +5,7 @@ ENV TZ=UTC
 
 # ── System packages, databases, and Python 3.12 ──────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl wget git vim nano unzip jq ca-certificates gnupg lsb-release \
+        curl wget git vim nano unzip jq ripgrep ca-certificates gnupg lsb-release \
         software-properties-common \
         build-essential pkg-config libssl-dev libffi-dev \
         postgresql postgresql-client libpq-dev \
@@ -32,8 +32,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN npm install -g \
         pnpm yarn typescript ts-node \
         @playwright/cli@latest \
-        @anthropic-ai/claude-code \
-        @openai/codex
+        @anthropic-ai/claude-code@2.1.221 \
+        @openai/codex \
+        @google/gemini-cli
 
 # ── Python packages and agent CLIs ───────────────────────────────────
 RUN pip install --no-cache-dir --ignore-installed \
@@ -53,8 +54,11 @@ RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-
 # ── Playwright browsers and skills ───────────────────────────────────
 RUN playwright-cli install-browser --with-deps chromium \
     && playwright install chromium \
-    && playwright-cli install --skills claude \
-    && playwright-cli install --skills agents
+    && playwright-cli install --skills claude --global \
+    && playwright-cli install --skills agents --global
+
+# Maps to Playwright's `chromiumSandbox: false`, i.e. launch Chrome with
+ENV PLAYWRIGHT_MCP_SANDBOX=false
 
 WORKDIR /workspace
 

@@ -19,6 +19,7 @@ Vision2Web is a comprehensive benchmark designed to evaluate multimodal coding a
 
 ## 🔥 News
 
+* **`2026.08.26`** 🔧 Inference adds a Gemini CLI framework alongside Claude Code and Codex.
 * **`2026.06.15`** 🔧 Functional testing now runs on Claude Code + `playwright-cli`, and inference adds a Codex framework alongside the Claude Code CLI.
 * **`2026.04.30`** 🎉 Vision2Web is accepted by ICML 2026 as a Spotlight Paper!
 * **`2026.03.30`** 🌟 We released Vision2Web with comprehensive evaluation tools and leaderboard!
@@ -119,11 +120,11 @@ bash build.sh
 
 This builds the `vision2web-sandbox:latest` image with all necessary dependencies.
 
-The sandbox ships **Claude Code**, **Codex**, **OpenHands**, and **`playwright-cli`** (with its agent skills).
+The sandbox ships **Claude Code**, **Codex**, **Gemini CLI**, **OpenHands**, and **`playwright-cli`** (with its agent skills).
 
 ### Step 2: Configure Model Endpoints
 
-**Recommended: use each agent's native API** — Claude Code with the Anthropic API, Codex with the OpenAI API — to avoid deviations introduced by cross-format conversion.
+**Recommended: use each agent's native API** — Claude Code with the Anthropic API, Codex with the OpenAI API, Gemini CLI with the Gemini API — to avoid deviations introduced by cross-format conversion.
 
 Alternatively, you can route through [LiteLLM](https://github.com/BerriAI/litellm) as a proxy for unified model routing across providers:
 
@@ -144,7 +145,7 @@ bash scripts/run_inference.sh
 ```
 
 **Key Parameters**:
-- `--framework`: Agent framework (`claude_code`, `codex`, or `openhands`)
+- `--framework`: Agent framework (`claude_code`, `codex`, `gemini_cli`, or `openhands`)
 - `--model`: Model identifier (should match LiteLLM configuration)
 - `--base-url`: API base URL (use LiteLLM proxy endpoint)
 - `--task`: Task type filter (`webpage`, `frontend`, or `website`)

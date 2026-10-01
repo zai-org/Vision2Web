@@ -21,9 +21,9 @@ class InferenceConfig:
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     max_workers: int = 5
-    timeout: int = 7200  # max seconds for a single task run (enforced in adapter)
+    timeout: int = 36000  # max seconds for a single task run (enforced in adapter)
     task: Optional[str] = None  # webpage, frontend, or website
-    max_retries: int = 2  # maximum number of retries on failure (total attempts = 1 + max_retries)
+    max_retries: int = 0  # maximum number of retries on failure (total attempts = 1 + max_retries)
 
 
 @dataclass
